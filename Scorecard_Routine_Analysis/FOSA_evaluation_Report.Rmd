@@ -1,0 +1,1111 @@
+---
+title: "Report: IPC scorecard analysis"
+author: "David Niyukuri and Landry Kabego"
+date: "13 December 2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      collapse = TRUE,
+                      fig.width = 8,
+                      fig.height = 6,
+                      dpi = 150,
+                      warning = FALSE,
+                      message = FALSE)
+
+```
+
+
+
+
+```{r load_packages}
+
+suppressMessages(library(readxl))
+suppressMessages(library(dplyr))
+suppressMessages(library(ggplot2))
+suppressMessages(library(ggforce))
+suppressMessages(library(kableExtra))
+suppressMessages(library(lubridate))
+suppressMessages(library(ggpubr))
+suppressMessages(library(linelist))
+
+
+```
+
+
+# Data loading and cleaning
+
+
+
+```{r read_scripts}
+
+# read scripts
+path_to_scripts <- here::here("Utility_Functions")
+scripts_files <- dir(path_to_scripts, pattern = ".R$", full.names=TRUE)
+for (file in scripts_files) source(file)
+
+```
+
+<!---
+# Chargement des données et nettoyage
+
+--->
+
+```{r load_data}
+
+
+# path to raw data
+
+path_to_data <- here::here("data", "scorecard-2019-12-13-17-30-48.xlsx") 
+
+
+# get data file
+
+data_kobo <- rio::import(path_to_data,
+                         guess_max = 1e4) %>%
+  clean_data(guess_dates = FALSE) %>%
+  as_tibble()
+
+
+# Note: we have two forms to colelct the IPC data: baseline and scorecard
+
+
+
+# data with IPC scorecard form
+data_scorecard <- dplyr::filter(data_kobo, data_kobo$veuillez_selectionner_le_questionnaire=="ipc_scorecard")
+
+# data with baseline form
+data_baseline <- dplyr::filter(data_kobo, data_kobo$veuillez_selectionner_le_questionnaire=="baseline")
+
+
+# Data for IPC score analysis: the combination of the data from the two forms
+data_score <- rbind(data_scorecard, data_baseline)
+
+
+
+# scorecard_evaluation_1st_cleaning script
+
+data_scorecard_clean <- scorecard_evaluation_1st_cleaning(data_score = data_score)
+
+
+```
+
+
+
+# Descriptive analysis of recent IPC evaluation
+
+
+## Overall IPC score of recent evaluation in Health Zones
+
+```{r descr}
+# Consider recent evaluation ONLY
+
+
+data_nziza_descriptive_recent <- recent_evaluation_only_fosa(data_hz = data_scorecard_clean)
+
+
+
+# I. DESCRIPTIVE: mean, median, sd - overall, or BY categorie, partners, zone de sante, type structure de sante -------------------
+
+
+
+# I.1. Overall by Health Zones
+
+stats_overall <- ggpubr::desc_statby(data_nziza_descriptive_recent, measure.var = "score_pci_100",
+                                     grps = "zone_de_sante")
+stats_overall_c <- stats_overall[, c("zone_de_sante", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_c[,2:6] <- round(stats_overall_c[,2:6])
+
+# Nbr of health Facilities
+zone_de_sante_n <- data_nziza_descriptive_recent %>% group_by(zone_de_sante) %>% tally()
+
+stats_overall_c <- cbind(stats_overall_c, zone_de_sante_n[,2])
+
+names(stats_overall_c) <- c("zone_de_sante", "min", "max", "median", "mean", "iqr", "nbr_healf_fac")
+
+stats_overall_c %>% 
+  kable() %>% 
+  kable_styling("striped") %>% 
+  kableExtra::add_header_above( c( "Table of summary statistics of overall IPC score of recent evaluation in Health Zones" = 7) ) %>% 
+  kableExtra::row_spec(17)
+
+
+
+# Plot
+
+plot.stats_overall <- ggplot(stats_overall, aes(x=zone_de_sante, y=median, group = zone_de_sante)) + 
+  geom_errorbar(aes(ymin=min, ymax=max), width=.1) +
+  geom_line(size=.3) +
+  geom_point(size=2) + 
+  rotate_x_text(45) +
+  xlab("Health Zone") + ylab("IPC score")+
+  ggtitle("Overall IPC score of recent evaluation in Health Zones")
+
+
+plot.stats_overall
+
+
+
+```
+
+## Overall IPC score of recent evaluation by type of Health Facilities
+
+
+
+```{r receHF}
+
+# 1.2. Overall by type of Health Facilities
+
+stats_overall_type_hf <- ggpubr::desc_statby(data_nziza_descriptive_recent, measure.var = "score_pci_100",
+                                             grps = "type_structure_de_sante")
+stats_overall_type_hf_c <- stats_overall_type_hf[, c("type_structure_de_sante", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_type_hf_c[,2:6] <- round(stats_overall_type_hf_c[,2:6])
+
+
+# Nbr of Health Facilities
+type_structure_de_sante_n <- data_nziza_descriptive_recent %>% group_by(type_structure_de_sante) %>% tally()
+
+
+stats_overall_type_hf_c <- cbind(stats_overall_type_hf_c, type_structure_de_sante_n[,2])
+
+names(stats_overall_type_hf_c) <- c("zone_de_sante", "min", "max", "median", "mean", "iqr", "nbr_healf_fac")
+
+stats_overall_type_hf_c %>% 
+  kable() %>% 
+  kable_styling("striped") %>% 
+  kableExtra::add_header_above( c( "Table of summary statistics of overall IPC score of recent evaluation by type of Health Facilities" = 7) ) %>% 
+  kableExtra::row_spec(9)
+
+
+
+# Plot
+
+plot.stats_overall_type_hf <- ggplot(stats_overall_type_hf, aes(x=type_structure_de_sante, y=median, group = type_structure_de_sante)) + 
+  geom_errorbar(aes(ymin=min, ymax=max), width=.1) +
+  geom_line(size=.3) +
+  geom_point(size=2) + 
+  rotate_x_text(45) +
+  xlab("Types of Health Facilities") + ylab("IPC score")+
+  ggtitle("Overall IPC score of recent evaluation by type of Health Facilities")
+
+plot.stats_overall_type_hf
+
+
+```
+
+
+## Overall IPC score of recent evaluation by category of Health Facilities
+
+
+
+```{r recetn_cat}
+
+# 1.3. Overall by categories of Health Facilities
+
+stats_overall_categorie <- ggpubr::desc_statby(data_nziza_descriptive_recent, measure.var = "score_pci_100",
+                                               grps = "categorie")
+
+stats_overall_categorie_c <- stats_overall_categorie[, c("categorie", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_categorie_c[,2:6] <- round(stats_overall_categorie_c[,2:6])
+
+# Nbr of Health Facilities
+
+categorie_n <- data_nziza_descriptive_recent %>% group_by(categorie) %>% tally()
+
+
+stats_overall_categorie_c <- cbind(stats_overall_categorie_c, categorie_n[,2])
+
+
+names(stats_overall_categorie_c) <- c("zone_de_sante", "min", "max", "median", "mean", "iqr", "nbr_healf_fac")
+
+
+
+stats_overall_categorie_c %>% 
+  kable() %>% 
+  kable_styling("striped") %>% 
+  kableExtra::add_header_above( c( "Table of summary statistics of overall IPC score of recent evaluation by categogry of Health Facilities" = 7) ) %>% 
+  kableExtra::row_spec(4)
+
+
+
+# Plot
+
+plot.stats_overall_categorie <- ggplot(stats_overall_categorie, aes(x=categorie, y=median,  group = categorie)) + 
+  geom_errorbar(aes(ymin=min, ymax=max), width=.1) +
+  geom_line(size=.3) +
+  geom_point(size=2) + 
+  rotate_x_text(45) +
+  xlab("Category of Health Facility") + ylab("IPC score")+
+  ggtitle("Overall IPC score of recent evaluation by categogry of Health Facilities")
+
+
+plot.stats_overall_categorie
+
+
+```
+
+
+
+## Overall IPC score of recent evaluation by presence of partners
+
+
+```{r recent_partn}
+
+
+# 1.4. Overall by presence of partners
+
+stats_overall_partners <- ggpubr::desc_statby(data_nziza_descriptive_recent, measure.var = "score_pci_100",
+                                              grps = "appuyee_par_partenaire")
+
+stats_overall_partners_c <- stats_overall_partners[, c("appuyee_par_partenaire", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_partners_c[,2:6] <- round(stats_overall_partners_c[,2:6])
+
+
+# Nbr of Health Facilities
+partner_status_n <- data_nziza_descriptive_recent %>% group_by(appuyee_par_partenaire) %>% tally()
+
+
+stats_overall_partners_c <- cbind(stats_overall_partners_c, partner_status_n[,2])
+
+
+names(stats_overall_partners_c) <- c("zone_de_sante", "min", "max", "median", "mean", "iqr", "nbr_healf_fac")
+
+
+stats_overall_partners_c %>% 
+  kable() %>% 
+  kable_styling("striped") %>% 
+  kableExtra::add_header_above( c( "Table of summary statistics of overall IPC score of recent evaluation by presence of partners" = 7) ) %>% 
+  kableExtra::row_spec(2)
+
+
+# PLot
+
+plot.stats_overall_partners <- ggplot(stats_overall_partners, aes(x=appuyee_par_partenaire, y=median, colour=appuyee_par_partenaire, group = appuyee_par_partenaire)) + 
+  geom_errorbar(aes(ymin=min, ymax=max), width=.1) +
+  geom_line(size=.3) +
+  geom_point(size=2) + 
+  rotate_x_text(45) +
+  xlab("Supported by Partners") + ylab("IPC score")+
+  ggtitle("Overall IPC score of recent evaluation by presence of partners")
+
+plot.stats_overall_partners
+
+
+```
+
+
+
+## Overall IPC score of recent evaluation by Health Zones and type of Health Facilities
+
+
+```{r recent_hz_type}
+
+# 1.5. Overall by Health Zones and type of Health Facilities
+
+stats_overall_hz_hf <- ggpubr::desc_statby(data_nziza_descriptive_recent, measure.var = "score_pci_100",
+                                           grps = c("zone_de_sante", "type_structure_de_sante"))
+stats_overall_hz_hf <- stats_overall_hz_hf[, c("zone_de_sante", "type_structure_de_sante", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_hz_hf[,3:7] <- round(stats_overall_hz_hf[,3:7])
+
+
+#
+#
+
+zone_de_sante_type_structure_de_sante_n <- data_nziza_descriptive_recent %>% group_by(zone_de_sante) %>% count(type_structure_de_sante) 
+
+stats_overall_hz_hf_c <- cbind(stats_overall_hz_hf, zone_de_sante_type_structure_de_sante_n[,3])
+
+names(stats_overall_hz_hf_c) <- c("zone_de_sante", "type_structure_de_sante", "min", "max", "median", "mean", "iqr", "nbr_health_fac")
+#
+#
+
+
+stats_overall_hz_hf_c %>% 
+  kable() %>% 
+  kable_styling("striped") %>% 
+  kableExtra::add_header_above( c( "Table of summary statistics of overall IPC score of recent evaluation by Health Zones and type of Health Facilities" = 8) ) %>% 
+  kableExtra::row_spec(90)
+
+
+
+# Plot
+
+plot.stats_overall_hz_hf_c <- ggplot(stats_overall_hz_hf_c, aes(x=type_structure_de_sante, y=median, colour=type_structure_de_sante, group = type_structure_de_sante)) + 
+  geom_errorbar(aes(ymin=min, ymax=max), width=.1) +
+  geom_line(size=.3) +
+  facet_wrap(.~zone_de_sante) +
+  geom_point(size=2) +  
+  rotate_x_text(45) +
+  xlab("Type of Health Facility") + ylab("IPC score")+
+  ggtitle("Overall IPC score of recent evaluation by Health Zones and type of Health Facilities")
+
+plot.stats_overall_hz_hf_c
+
+
+
+```
+
+
+
+## Overall IPC score of recent evaluation by Health Zones and category of Health Facilities
+
+
+```{r recent_hz_cat}
+
+# 1.6. Overall by Health Zones and by categories of Health Facilities
+
+stats_overall_hz_cat <- ggpubr::desc_statby(data_nziza_descriptive_recent, measure.var = "score_pci_100",
+                                            grps = c("zone_de_sante", "categorie"))
+stats_overall_hz_cat_c <- stats_overall_hz_cat[, c("zone_de_sante", "categorie", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_hz_cat_c[,3:7] <- round(stats_overall_hz_cat_c[,3:7])
+
+#
+#
+zone_de_sante_categorie_n <- data_nziza_descriptive_recent %>% group_by(zone_de_sante) %>% count(categorie) 
+
+stats_overall_hz_cat_c <- cbind(stats_overall_hz_cat_c, zone_de_sante_categorie_n[,3])
+
+names(stats_overall_hz_cat_c) <- c("zone_de_sante", "categorie", "min", "max", "median", "mean", "iqr", "nbr_health_fac")
+
+#
+#
+
+
+stats_overall_hz_cat_c %>% 
+  kable() %>% 
+  kable_styling("striped") %>% 
+  kableExtra::add_header_above( c( "Table of summary statistics of overall IPC score of recent evaluation by Health Zones and by categories of Health Facilities" = 8) ) %>% 
+  kableExtra::row_spec(55)
+
+
+
+# Plot
+
+plot.stats_overall_hz_cat_c <- ggplot(stats_overall_hz_cat_c, aes(x=categorie, y=median, colour=categorie, group = categorie)) + 
+  geom_errorbar(aes(ymin=min, ymax=max), width=.1) +
+  geom_line(size=.3) +
+  facet_wrap(.~zone_de_sante) +
+  geom_point(size=2) +  
+  rotate_x_text(45) +
+  xlab("Category of Health Facility") + ylab("IPC score")+
+  ggtitle("Overall IPC score of recent evaluation by Health Zones and by categories of Health Facilities")
+
+
+plot.stats_overall_hz_cat_c
+
+
+```
+
+
+
+## Overall IPC score of recent evaluation by Health Zones and by presence of partners
+
+
+
+```{r recent_hz_partn}
+
+# 1.7. Overall by Health Zones and by presence of partners
+
+stats_overall_hz_partn <- ggpubr::desc_statby(data_nziza_descriptive_recent, measure.var = "score_pci_100",
+                                              grps = c("zone_de_sante", "appuyee_par_partenaire"))
+
+stats_overall_hz_partn_c <- stats_overall_hz_partn[, c("zone_de_sante", "appuyee_par_partenaire", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_hz_partn_c[,3:7] <- round(stats_overall_hz_partn_c[,3:7])
+
+#
+#
+zone_de_sante_partner_status_n <- data_nziza_descriptive_recent %>% group_by(zone_de_sante) %>% count(appuyee_par_partenaire) 
+
+stats_overall_hz_partn_c <- cbind(stats_overall_hz_partn_c, zone_de_sante_partner_status_n[,3])
+#
+
+names(stats_overall_hz_partn_c) <- c("zone_de_sante", "appuyee_par_partenaire", "min", "max", "median", "mean", "iqr", "nbr_health_fac")
+
+#
+
+stats_overall_hz_partn_c %>% 
+  kable() %>% 
+  kable_styling("striped") %>% 
+  kableExtra::add_header_above( c( "Table of summary statistics of overall IPC score of recent evaluation by Health Zones and by presence of partners" = 8) ) %>% 
+  kableExtra::row_spec(29)
+
+
+
+# Plot
+
+plot.stats_overall_hz_partn_c <- ggplot(stats_overall_hz_partn_c, aes(x=appuyee_par_partenaire, y=median, colour=appuyee_par_partenaire, group = appuyee_par_partenaire)) + 
+  geom_errorbar(aes(ymin=min, ymax=max), width=.1) +
+  geom_line(size=.3) +
+  facet_wrap(.~zone_de_sante) +
+  geom_point(size=2) +  
+  rotate_x_text(45) +
+  xlab("Supported by Partners") + ylab("IPC score")+
+  ggtitle("Overall IPC score of recent evaluation by Health Zones and by presence of partners")
+
+
+plot.stats_overall_hz_partn_c
+
+
+```
+
+
+
+# Descriptive analysis for components of IPC in recent evaluation
+
+
+Note that the following results are from recent evaluation.
+
+
+## IPC Component 1 by Health Zone
+
+```{r ipc-cps}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_1 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_1)
+
+plot_c_1 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_1)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 1 per Health Zone")
+
+plot_c_1
+
+```
+
+
+## IPC Component 2 by Health Zone
+
+```{r ipc-cps_c_2}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_2 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_2)
+
+plot_c_2 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_2)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 2 per Health Zone")
+
+plot_c_2
+
+```
+
+
+
+## IPC Component 3 by Health Zone
+
+```{r ipc-cps_c_3}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_3 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_3)
+
+plot_c_3 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_3)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 3 per Health Zone")
+
+plot_c_3
+
+```
+
+
+## IPC Component 4 by Health Zone
+
+```{r ipc-cps_c_4}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_4 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_4)
+
+plot_c_4 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_4)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 4 per Health Zone")
+
+plot_c_4
+
+```
+
+
+
+## IPC Component 5 by Health Zone
+
+```{r ipc-cps_c_5}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_5 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_5)
+
+plot_c_5 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_5)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 5 per Health Zone")
+
+plot_c_5
+
+```
+
+
+
+## IPC Component 6 by Health Zone
+
+```{r ipc-cps_c_6}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_6 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_6)
+
+plot_c_6 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_6)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 6 per Health Zone")
+
+plot_c_6
+
+```
+
+
+## IPC Component 7 by Health Zone
+
+```{r ipc-cps_c_7}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_7 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_7)
+
+plot_c_7 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_7)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 7 per Health Zone")
+
+plot_c_7
+
+```
+
+
+
+## IPC Component 8 by Health Zone
+
+```{r ipc-cps_c_8}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_8 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_8)
+
+plot_c_8 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_8)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 8 per Health Zone")
+
+plot_c_8
+
+```
+
+
+
+## IPC Component 9 by Health Zone
+
+```{r ipc-cps_c_9}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_9 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_9)
+
+plot_c_9 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_9)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 9 per Health Zone")
+
+plot_c_9
+
+```
+
+
+
+## IPC Component 10 by Health Zone
+
+```{r ipc-cps_c_10}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_10 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_10)
+
+plot_c_10 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_10)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 10 per Health Zone")
+
+plot_c_10
+
+```
+
+
+
+## IPC Component 11 by Health Zone
+
+```{r ipc-cps_c_11}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_11 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_11)
+
+plot_c_11 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_11)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 11 per Health Zone")
+
+plot_c_11
+
+```
+
+
+
+## IPC Component 12 by Health Zone
+
+```{r ipc-cps_c_12}
+
+data_nziza_descriptive_recent_ipc_cs <- data_nziza_descriptive_recent
+
+data_nziza_descriptive_recent_ipc_cs$score_c_12 <- factor(data_nziza_descriptive_recent_ipc_cs$score_c_12)
+
+plot_c_12 <- ggplot(data_nziza_descriptive_recent_ipc_cs, aes(x = zone_de_sante, fill = score_c_12)) +
+  geom_bar() +
+  rotate_x_text(45) +
+  scale_fill_discrete(name = "Score level", breaks = c("0", "1", "2", "3"), labels = c("0", "1", "2", "3")) + 
+  xlab("Health Zone") +
+  ylab("Count") +  
+  ggtitle("Score for IPC component 12 per Health Zone")
+
+plot_c_12
+
+```
+
+
+
+## IPC scores for all IPC omponents during recent evaluation
+
+
+```{r all_ipcs}
+
+data_components_all <- data_nziza_descriptive_recent_ipc_cs[,c(156:167)]
+
+data_brut <- data_nziza_descriptive_recent_ipc_cs[,c(1:155, 170)]
+
+dat_1 <- data_brut
+dat_1$score_comp <- data_components_all$score_c_1
+dat_1$ipc_component <- rep("comp_1", nrow(dat_1))
+
+
+dat_2 <- data_brut
+dat_2$score_comp <- data_components_all$score_c_2
+dat_2$ipc_component <- rep("comp_2", nrow(dat_2))
+
+
+dat_3 <- data_brut
+dat_3$score_comp <- data_components_all$score_c_3
+dat_3$ipc_component <- rep("comp_3", nrow(dat_3))
+
+
+dat_4 <- data_brut
+dat_4$score_comp <- data_components_all$score_c_4
+dat_4$ipc_component <- rep("comp_4", nrow(dat_4))
+
+
+dat_5 <- data_brut
+dat_5$score_comp <- data_components_all$score_c_5
+dat_5$ipc_component <- rep("comp_5", nrow(dat_5))
+
+
+dat_6 <- data_brut
+dat_6$score_comp <- data_components_all$score_c_6
+dat_6$ipc_component <- rep("comp_6", nrow(dat_6))
+
+
+dat_7 <- data_brut
+dat_7$score_comp <- data_components_all$score_c_7
+dat_7$ipc_component <- rep("comp_7", nrow(dat_7))
+
+
+dat_8 <- data_brut
+dat_8$score_comp <- data_components_all$score_c_8
+dat_8$ipc_component <- rep("comp_8", nrow(dat_8))
+
+
+dat_9 <- data_brut
+dat_9$score_comp <- data_components_all$score_c_9
+dat_9$ipc_component <- rep("comp_9", nrow(dat_9))
+
+
+dat_10 <- data_brut
+dat_10$score_comp <- data_components_all$score_c_10
+dat_10$ipc_component <- rep("comp_10", nrow(dat_10))
+
+
+dat_11 <- data_brut
+dat_11$score_comp <- data_components_all$score_c_11
+dat_11$ipc_component <- rep("comp_11", nrow(dat_11))
+
+
+dat_12 <- data_brut
+dat_12$score_comp <- data_components_all$score_c_12
+dat_12$ipc_component <- rep("comp_12", nrow(dat_12))
+
+
+dat_all <- rbind(dat_1, dat_2, dat_3, dat_4, dat_5, dat_6,
+                 dat_7, dat_8, dat_9, dat_10, dat_11, dat_12)
+
+# dat_all$score_comp <- dmm::unfactor(dat_all$score_comp)
+
+ggplot(dat_all,aes(x=date_enquete,y=score_comp, fill=ipc_component))+
+  geom_bar(stat="identity")+
+  xlab("Date of evaluation") +
+  ylab("Score") +
+  ggtitle("Scores for all IPC omponents during recent evaluation")
+
+
+```
+
+
+
+## IPC scores for all IPC components per Health Zone during recent evaluation
+
+
+```{r ipcs_hz}
+
+ggplot(dat_all,aes(x=date_enquete,y=score_comp, fill=ipc_component))+
+  geom_bar(stat="identity")+
+  facet_wrap(zone_de_sante ~.)+
+  xlab("Date of evaluation") +
+  ylab("Score") +
+  ggtitle("IPC scores for all IPC components per Health Zone during recent evaluation")
+
+```
+
+
+
+## IPC scores for all IPC components by presence of partners during recent evaluation
+
+
+```{r ipc_part}
+
+ggplot(dat_all,aes(x=date_enquete,y=score_comp, fill=ipc_component))+
+  geom_bar(stat="identity")+
+  facet_wrap(appuyee_par_partenaire ~.)+
+  xlab("Date of evaluation") +
+  ylab("Score") +
+  ggtitle("IPC scores for all IPC components  by presence of partners during recent evaluation")
+
+
+```
+
+
+# Descriptive analysis for partners in IPC
+
+
+## Supported Health Zones and their IPC score
+
+
+
+```{r descr_hz}
+
+partners_data <- dplyr::filter(data_nziza_descriptive_recent, !is.na(data_nziza_descriptive_recent$nbre_partenaires))
+
+# transform in numeric 
+
+partners_data_only <- partners_data[,27:80]
+
+
+for(i in 1:ncol(partners_data_only)){
+  
+  partners_data_only[,i] <- as.numeric(partners_data_only[,i])
+  
+}
+
+
+partners_data[,27:80] <- partners_data_only
+
+
+partners_all_in_hz <- partners_data %>% 
+  group_by(zone_de_sante) %>% 
+  count(partenaire_adeco,
+        partenaire_alima,
+        partenaire_cac,
+        partenaire_care_international,
+        partenaire_caritas,
+        partenaire_caritas_butembo,
+        partenaire_cbca,
+        partenaire_cdc_africa,
+        partenaire_ceprossan,
+        partenaire_cordaid,
+        partenaire_famamundi,
+        partenaire_fardc,
+        partenaire_ima,
+        partenaire_imc,
+        partenaire_imt_anvers,
+        partenaire_inrb,
+        partenaire_institut_pasteur_de_dakar_ipd, 
+        partenaire_irc,
+        partenaire_irc_montpelier,
+        partenaire_jica,
+        partenaire_medair,
+        partenaire_mercy_corps,
+        partenaire_ministere_de_la_sante,
+        partenaire_monusco,
+        partenaire_mouvement_croix_rouge,
+        partenaire_msf,
+        partenaire_nih,
+        partenaire_oim,
+        partenaire_oms,
+        partenaire_ong_musaka,
+        partenaire_oxfam,
+        partenaire_pam,
+        partenaire_pap_rdc,
+        partenaire_pdss,
+        partenaire_pnc,
+        partenaire_ppsp,
+        partenaire_predict_metabiota,
+        partenaire_premier_secours,
+        partenaire_protection_civile,
+        partenaire_racoj,
+        partenaire_rb_fondation,
+        partenaire_save_the_children,
+        partenaire_sfcg,
+        partenaire_sos_eau_et_foret,
+        partenaire_tearfund,
+        partenaire_ucla_drc,
+        partenaire_umir,
+        partenaire_unesco,
+        partenaire_unfpa,
+        partenaire_unhas,
+        partenaire_unicef,
+        partenaire_usamrid,
+        partenaire_world_vision)
+
+
+col_names <- names(partners_all_in_hz)
+col_names <- gsub("partenaire_","",col_names)
+
+names(partners_all_in_hz) <- col_names
+
+partners_all_in_hz_groupe <- partners_all_in_hz
+
+summary_partners_all_in_hz_groupe <- partners_all_in_hz_groupe %>% group_by(zone_de_sante) %>% tally()
+
+names(summary_partners_all_in_hz_groupe) <- c("zone_de_sante", "nbr_partners")
+
+# summary_partners_all_in_hz_groupe %>%
+#   kable() %>%
+#   kable_styling("striped") %>%
+#   kableExtra::add_header_above( c("Table of Health Zone and number of IPC partners" = 2) ) %>%
+#   kableExtra::row_spec(12)
+
+
+
+# HZ Score nbre_partenaires
+
+# score in HZ
+stats_overall_partners_data <- ggpubr::desc_statby(partners_data, measure.var = "score_pci_100",
+                                                   grps = "zone_de_sante")
+stats_overall_partners_data_c <- stats_overall_partners_data[, c("zone_de_sante", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_partners_data_c[,2:6] <- round(stats_overall_partners_data_c[,2:6])
+
+
+# Number of partners in these HZ
+zone_de_sante_n_part <- partners_data %>% group_by(zone_de_sante) %>% tally()
+
+
+stats_overall_partners_data_c_ns <- cbind(stats_overall_partners_data_c[,2:6], summary_partners_all_in_hz_groupe[,2])
+
+
+
+stats_overall_partners_data_c_ns <- cbind(summary_partners_all_in_hz_groupe[,1], stats_overall_partners_data_c_ns) # adding name of HZ
+
+names(stats_overall_partners_data_c_ns) <- c("zone_de_sante", "min", "max", "median", "mean", "iqr",  "nbr_partners")
+
+
+stats_overall_partners_data_c_ns %>%
+  kable() %>%
+  kable_styling("striped") %>%
+  kableExtra::add_header_above(c( "IPC Score and IPC partners and Health Facilities supported" = 7) ) %>%
+  kableExtra::row_spec(12)
+
+
+
+```
+
+
+
+## IPC partners in Health Zones
+
+
+
+```{r partner}
+
+partners_all_in_hz %>%
+  kable() %>%
+  kable_styling("striped") %>%
+  kableExtra::add_header_above( c("Table of Health Zone and IPC partners" = 55) ) %>%
+  kableExtra::row_spec(74)
+
+```
+
+
+
+# Descriptive analysis of the difference between recent and previous IPC evaluations
+
+
+```{r recent_previous}
+
+
+rec_prev_dat <- recent_previous_fosa_evaluations(data_hz = data_scorecard_clean)
+
+
+hz_evaluations <- rec_prev_dat %>% mutate(diffVal = scores_recent - scores_previous)
+
+
+hz_evaluations_1 <- hz_evaluations
+
+hz_evaluations_1$partner_status <- rep(NA, nrow(hz_evaluations_1))
+
+for(i in 1:nrow(hz_evaluations_1)){
+  
+  if(hz_evaluations_1$partenaires_recent[i]==0){
+    
+    hz_evaluations_1$partner_status[i] <- "no"
+    
+  }else{
+    
+    hz_evaluations_1$partner_status[i] <- "yes"
+    
+  }
+  
+}
+
+hz_evaluations <- hz_evaluations_1
+
+
+```
+
+
+
+## PC score difference between recent and previous evaluations
+
+
+Difference = Recent - Previous
+
+
+```{r diff_recent_previous}
+
+# Overall IPC score difference -------------
+
+ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal)) + 
+  geom_histogram()+
+  ggtitle("IPC score difference between recent and previous evaluations")+
+  xlab("IPC score difference") +
+  ylab("Frequency")
+
+```
+
+
+
+## IPC score difference with presence of parteners
+
+
+
+```{r diff_partn}
+
+ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal, fill=partner_status)) + 
+  geom_histogram()+
+  ggtitle("IPC score difference between recent and previous evaluation and partners")+
+  xlab("IPC score difference") +
+  ylab("Frequency")
+
+
+```
+
+
+
+## IPC score difference with presence of parteners by Health Zones
+
+
+```{r diff_part_hz}
+
+
+ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal, fill=partner_status)) + 
+  geom_histogram()+
+  facet_wrap(nom_zone_sante_hz ~.)+
+  ggtitle("IPC score difference between recent and previous evaluations in Health Zones and partners")+
+  xlab("IPC score difference") +
+  ylab("Frequency")
+
+
+
+```
+
+
+
+
+## IPC score difference by categories of Health Facilities
+
+
+
+```{r diff_cat}
+
+ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal, fill = categorie_fosa)) + 
+  geom_histogram()+
+  ggtitle("IPC score difference between recent and previous evaluation")+
+  xlab("IPC score difference") +
+  ylab("Frequency")
+
+
+```
+
+
