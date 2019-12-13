@@ -2,9 +2,9 @@
 
 ## Routines analysis
 
-* Healthcare Facility level IPC gap analysis after evaluation to generate an Operational Action Plan
-* Comparing previous and recent evaluations per each Healthcare Faclitiy
+* Healthcare facility level IPC gap analysis to generate an Operational Action Plan
+* Comparing previous and recent & first and recent evaluations per each healthcare faclitiy
 
 ## Modelling
 
-* Prioritization of Healthcare Facilities for IPC interventions
+* Prioritization of healthcare facilities for IPC interventions
