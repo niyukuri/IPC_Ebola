@@ -1,0 +1,417 @@
+---
+title: "Analysis of difference between previous and recent IPC evaluations"
+author: "David Niyukuri, Landry Kabego and atrick Mirindi"
+date: "09 September 2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      collapse = TRUE,
+                      fig.width = 8,
+                      fig.height = 6,
+                      dpi = 150,
+                      warning = FALSE,
+                      message = FALSE)
+
+```
+
+
+
+
+```{r load_packages}
+
+suppressMessages(library(readxl))
+suppressMessages(library(dplyr))
+suppressMessages(library(ggplot2))
+suppressMessages(library(ggforce))
+suppressMessages(library(kableExtra))
+suppressMessages(library(lubridate))
+suppressMessages(library(ggpubr))
+suppressMessages(library(linelist))
+
+
+```
+
+
+
+```{r read_scripts}
+
+# read scripts
+path_to_scripts <- here::here("Utility_Functions")
+scripts_files <- dir(path_to_scripts, pattern = ".R$", full.names=TRUE)
+for (file in scripts_files) source(file)
+
+```
+
+
+
+```{r load_data}
+
+
+# path to raw data
+
+path_to_data <- here::here("data", "scorecard-2019-11-09-09-42-11.xlsx") 
+
+
+# get data file
+
+data_kobo <- rio::import(path_to_data,
+                         guess_max = 1e4) %>%
+  clean_data(guess_dates = FALSE) %>%
+  as_tibble()
+
+
+# Note: we have two forms to colelct the IPC data: baseline and scorecard
+
+
+
+# data with IPC scorecard form
+data_scorecard <- dplyr::filter(data_kobo, data_kobo$veuillez_selectionner_le_questionnaire=="ipc_scorecard")
+
+# data with baseline form
+data_baseline <- dplyr::filter(data_kobo, data_kobo$veuillez_selectionner_le_questionnaire=="baseline")
+
+
+# Data for IPC score analysis: the combination of the data from the two forms
+data_score <- rbind(data_scorecard, data_baseline)
+
+
+
+# scorecard_evaluation_1st_cleaning script
+
+data_nziza <- scorecard_evaluation_1st_cleaning(data_score = data_score)
+
+
+```
+
+
+
+```{r previous_recent_data}
+
+
+data_hz <- data_nziza
+
+index_fosa <- which(is.na(data_hz$nom_fosa_new))
+
+if(length(index_fosa) >= 1){
+  
+  data_hz_df <- data_hz[-c(index_fosa),]
+  
+}else{
+  
+  data_hz_df <- data_hz
+  
+}
+
+
+
+f_names <- names(table(data_hz_df$nom_fosa_new))
+
+
+previous_recent_df <- NULL
+
+
+for(i in 1:length(table(data_hz_df$nom_fosa_new))){
+  
+  j <- table(data_hz_df$nom_fosa_new)[[i]] # which(f_names=="disp_bethesaida")
+  
+  if(j>1){
+    
+    dt_f <- dplyr::filter(data_hz_df, data_hz_df$nom_fosa_new==paste0(f_names[i]))
+    
+    dt_f <- arrange(dt_f,date_enquete)
+    
+    zamaho <- dt_f[, c(12:15, 17, 19, 20)][1,]
+
+    
+    previous_evaluation <- dt_f[,c(1, 156:167, 169)][nrow(dt_f)-1,]
+    
+    names(previous_evaluation) <- paste0("prev_", names(previous_evaluation))
+    
+    
+    recent_evaluation <- dt_f[,c(1, 156:167, 169)][nrow(dt_f),]
+    
+    names(recent_evaluation) <- paste0("recent_", names(recent_evaluation))
+    
+    previous_recent_df_i <- cbind(zamaho, previous_evaluation, recent_evaluation)
+    
+    previous_recent_df <- rbind(previous_recent_df, previous_recent_df_i)
+    
+  }
+  
+}
+
+
+
+
+```
+
+
+
+
+
+
+```{r dat}
+
+data_nziza_descriptive_recent <- previous_recent_df
+
+dat_1 <- data_nziza_descriptive_recent[,c(1:7, 9:21)]
+
+dat_2 <- data_nziza_descriptive_recent[,c(1:7, 23:35)]
+
+
+# names(dat) <- c("zone_de_sante", "aire_de_sante", "nom_fosa", "categorie_fosa",
+#                 "score_pci")
+# 
+# names(dat_2) <- c("zone_de_sante", "aire_de_sante", "nom_fosa", "categorie_fosa",
+#                   "score_pci")
+# 
+# data_hist <- rbind(dat, dat_2)
+# 
+# data_hist$Evaluation <- c(rep("first", nrow(dat)), rep("recent", nrow(dat_2)))
+
+
+compa_dat_1 <- dat_1[,c(8:20)]
+
+compa_dat_1[,1:12] <- round((compa_dat_1[,1:12]/3)*100, digits = 2)
+
+compa_dat_2 <- dat_2[,c(8:20)]
+
+compa_dat_2[,1:12] <- round((compa_dat_2[,1:12]/3)*100, digits = 2)
+
+
+
+# wilcox.test(compa_dat_1[,13], compa_dat_2[,13], paired=TRUE)
+
+
+
+
+```
+
+
+
+# Comparing of IPC score for the previous and recent evaluations
+
+
+Descriptive description, and use of Wilcoxon rank sum test.
+
+
+## Overall Comparison
+
+```{r compairing_means}
+
+previous_eval <- compa_dat_1[,13]
+recent_eval <- compa_dat_2[,13]
+
+df_evals <- data.frame(previous_eval, recent_eval)
+
+score <- c(df_evals$previous_eval, df_evals$recent_eval)
+
+eval <- c(rep("Previous", length(df_evals$previous_eval)), rep("Recent", length(df_evals$recent_eval)))
+
+data_df_evals_transf <- data.frame(score, eval)
+
+
+paste("Summary statistics for previous evaluations:")
+summary(previous_eval)
+
+
+paste("Summary statistics for recent evaluations:")
+summary(recent_eval)
+
+names(data_df_evals_transf) <- c("Score", "Evaluation")
+
+ggboxplot(data_df_evals_transf, x = "Evaluation", y = "Score", 
+          color = "Evaluation", palette = c("#FF0000", "#00FF00"),
+          ylab = "IPC Score", xlab = "IPC evaluations")+
+  ggtitle("Boxplot for previous and recent evaluations in all Health Zones")
+
+
+
+paste("Wilcoxon Test outputs:")
+
+wilcox.test(previous_eval, recent_eval, paired=TRUE)
+
+
+
+```
+
+
+
+
+
+## Comparison of IPC scores for Butembo and Katwa Health Zones
+
+
+
+```{r compairing_scores_but_kat}
+
+data_nziza_but_kat <- dplyr::filter(previous_recent_df, previous_recent_df$zone_de_sante=="butembo" | previous_recent_df$zone_de_sante=="katwa")
+
+previous_eval <- data_nziza_but_kat$prev_score_pci_100
+recent_eval <- data_nziza_but_kat$recent_score_pci_100
+
+
+df_evals <- data.frame(previous_eval, recent_eval)
+
+score <- c(df_evals$previous_eval, df_evals$recent_eval)
+
+eval <- c(rep("First", length(df_evals$previous_eval)), rep("Recent", length(df_evals$recent_eval)))
+
+data_df_evals_transf <- data.frame(score, eval)
+
+
+paste("Summary statistics for first evaluations:")
+summary(previous_eval)
+
+
+paste("Summary statistics for recent evaluations:")
+summary(recent_eval)
+
+names(data_df_evals_transf) <- c("Score", "Evaluation")
+
+ggboxplot(data_df_evals_transf, x = "Evaluation", y = "Score", 
+          color = "Evaluation", palette = c("#FF0000", "#00FF00"),
+          ylab = "IPC Score", xlab = "IPC evaluations")+
+  ggtitle("Boxplot for previous and recent evaluations in Butembo and Katwa")
+
+
+
+paste("Wilcoxon Test outputs:")
+
+wilcox.test(previous_eval, recent_eval, paired=TRUE)
+
+
+```
+
+
+
+## Descriptive analysis of previous evaluations by Health Zone
+
+
+```{r descriptive_stats_overall_first}
+
+# I. DESCRIPTIVE: mean, median, sd - overall, or BY categorie, partners, zone de Santé, type structure de Santé -------------------
+
+
+
+# I.1. Overall par Zone de Santés
+
+
+stats_overall <- ggpubr::desc_statby(dat_1, measure.var = "prev_score_pci_100",
+                                     grps = "zone_de_sante")
+stats_overall_c <- stats_overall[, c("zone_de_sante", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_c[,2:6] <- round(stats_overall_c[,2:6])
+
+# Nbr of health Facilities
+zone_de_sante_n <- dat_1 %>% group_by(zone_de_sante) %>% tally()
+
+stats_overall_c <- cbind(stats_overall_c, zone_de_sante_n[,2])
+
+names(stats_overall_c) <- c("Health_Zone", "Min", "Max", "Median", "Mean", "IQR", "Number_FOSA")
+
+x_d = summary(dat_1$prev_score_pci_100)
+x_diqr <- round(x_d[5] - x_d[2], digits = 2)
+
+d_2 <- c(x_d[1], x_d[6], round(x_d[3], digits = 2), round(x_d[4], digits = 2), x_diqr, sum(zone_de_sante_n$n))
+
+d_3 <- "Moyenne/Total"
+
+d_4 <- c(d_3, as.numeric(d_2))
+
+d_5 <- rbind(stats_overall_c, d_4)
+
+
+stats_overall_c <- d_5
+
+stats_overall_c %>%
+  kable() %>%
+  kable_styling("striped") %>%
+  kableExtra::add_header_above( c( "Summary statistics for IPC score for previous evaluations by Health Zones" = ncol(stats_overall_c)) ) %>%
+  kableExtra::row_spec(18)
+
+
+
+plot.stats_overall <- ggplot(stats_overall, aes(x=zone_de_sante, y=median, group = zone_de_sante)) + 
+  geom_errorbar(aes(ymin=min, ymax=max), width=.1) +
+  geom_hline(aes(yintercept = mean(stats_overall$median)), color = "red", linetype = "dotted", size=2)+
+  # geom_line(size=.3) +
+  geom_point(size=2) + 
+  rotate_x_text(45) +
+  xlab("Health Zone") + ylab("IPC Score")+
+  ggtitle("Summary statistics for IPC score for previous evaluations by Health Zones")
+
+plot.stats_overall
+
+
+```
+
+
+## Descriptive analysis of recent evaluations by Health Zone
+
+
+```{r descriptive_stats_overall_recent}
+
+# I. DESCRIPTIVE: mean, median, sd - overall, or BY categorie, partners, zone de Santé, type structure de Santé -------------------
+
+
+
+# I.1. Overall par Zone de Santés
+
+
+stats_overall <- ggpubr::desc_statby(dat_2, measure.var = "score_pci_recent",
+                                     grps = "zone_de_sante")
+stats_overall_c <- stats_overall[, c("zone_de_sante", "min", "max", "median", "mean", "iqr")]
+
+stats_overall_c[,2:6] <- round(stats_overall_c[,2:6])
+
+# Nbr of health Facilities
+zone_de_sante_n <- dat_2 %>% group_by(zone_de_sante) %>% tally()
+
+stats_overall_c <- cbind(stats_overall_c, zone_de_sante_n[,2])
+
+names(stats_overall_c) <- c("Health_Zone", "Min", "Max", "Median", "Mean", "IQR", "Number_FOSA")
+
+x_d = summary(dat_2$score_pci_recent)
+x_diqr <- round(x_d[5] - x_d[2], digits = 2)
+
+d_2 <- c(x_d[1], x_d[6], round(x_d[3], digits = 2), round(x_d[4], digits = 2), x_diqr, sum(zone_de_sante_n$n))
+
+d_3 <- "Moyenne/Total"
+
+d_4 <- c(d_3, as.numeric(d_2))
+
+d_5 <- rbind(stats_overall_c, d_4)
+
+
+stats_overall_c <- d_5
+
+stats_overall_c %>%
+  kable() %>%
+  kable_styling("striped") %>%
+  kableExtra::add_header_above( c( "Summary statistics for IPC score for recent evaluations by Health Zones" = ncol(stats_overall_c)) ) %>%
+  kableExtra::row_spec(18)
+
+
+
+plot.stats_overall <- ggplot(stats_overall, aes(x=zone_de_sante, y=median, group = zone_de_sante)) + 
+  geom_errorbar(aes(ymin=min, ymax=max), width=.1) +
+  geom_hline(aes(yintercept = mean(stats_overall$median)), color = "red", linetype = "dotted", size=2)+
+  # geom_line(size=.3) +
+  geom_point(size=2) + 
+  rotate_x_text(45) +
+  xlab("Health Zone") + ylab("IPC Score")+
+  ggtitle("Summary statistics for IPC score for recent evaluations by Health Zones")
+
+plot.stats_overall
+
+
+```
+
