@@ -37,7 +37,7 @@ for (file in scripts_files) source(file)
 
 # path to raw data: you change accordingly to your data folder
 
-path_to_data <- here::here("data", "scorecard-2019-12-13-08-24-55.xlsx") 
+path_to_data <- here::here("data", "scorecard-2019-12-13-17-30-48.xlsx") 
 
 
 # get data file
@@ -1077,7 +1077,7 @@ save_dat_pao_hf_all_rm_crit_NA_final <- dplyr::select(save_dat_pao_hf_all_rm_cri
                                                       `Plan d'Action`, `Critere PCI`, dead_line_all)
 
 
-write.csv(save_dat_pao_hf_all_rm_crit_NA_final, file = paste0("results/PCI_PAO_HZs.csv"))
+write.csv(save_dat_pao_hf_all_rm_crit_NA_final, file = paste0("results/PCI_PAO_2019_21_13_HZs.csv"))
 
 
 
@@ -1122,7 +1122,7 @@ names(gap_freq_data_frame) <- c("zone_de_sante", "frequence_du_gap", "nom_du_gap
 gap_freq_data_frame_x <- dplyr::filter(gap_freq_data_frame, gap_freq_data_frame$frequence_du_gap!=0)
 
 
-write.csv(gap_freq_data_frame_x, file = paste0("results/Frequencies_gaps_PAO_HZs.csv"))
+write.csv(gap_freq_data_frame_x, file = paste0("results/Frequencies_gaps_2019_21_13_PAO_HZs.csv"))
 
 
 
