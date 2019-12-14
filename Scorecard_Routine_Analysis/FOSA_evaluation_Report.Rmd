@@ -1,12 +1,20 @@
 ---
 title: "Report: IPC scorecard analysis"
-author: "David Niyukuri and Landry Kabego"
-date: "13 December 2019"
+author: "David Niyukuri et Landry Kabego"
+date: "`r format(Sys.time(), '%A %d %B %Y')`"
 output:
   html_document:
-    df_print: paged
-  pdf_document: default
-  word_document: default
+    code_folding: hide
+    highlight: pygments
+    number_sections: yes
+    theme: spacelab
+    toc: yes
+    toc_collapse: no
+    toc_depth: 4
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
 ---
 
 ```{r setup, include=FALSE}
@@ -1002,6 +1010,10 @@ partners_all_in_hz %>%
 # Descriptive analysis of the difference between recent and previous IPC evaluations
 
 
+Difference = Recent - Previous
+
+
+
 ```{r recent_previous}
 
 
@@ -1036,11 +1048,10 @@ hz_evaluations <- hz_evaluations_1
 
 
 
-## PC score difference between recent and previous evaluations
 
 
-Difference = Recent - Previous
 
+## IPC score difference between recent and previous evaluations
 
 ```{r diff_recent_previous}
 
@@ -1056,7 +1067,7 @@ ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal)) +
 
 
 
-## IPC score difference with presence of parteners
+## IPC score difference with presence of partners
 
 
 
@@ -1106,6 +1117,127 @@ ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal, fill = categorie_fosa)) 
   ylab("Frequency")
 
 
+
+## XXXXXXXXXXXXXXXXXXXX -------
+
 ```
+
+
+# Descriptive analysis of the difference between recent and first IPC evaluations
+
+
+Difference = Recent - First
+
+
+
+```{r recent_first}
+
+
+rec_prev_dat <- recent_first_fosa_evaluations(data_hz = data_scorecard_clean)
+
+
+hz_evaluations <- rec_prev_dat %>% mutate(diffVal = scores_recent - scores_first)
+
+
+hz_evaluations_1 <- hz_evaluations
+
+hz_evaluations_1$partner_status <- rep(NA, nrow(hz_evaluations_1))
+
+for(i in 1:nrow(hz_evaluations_1)){
+  
+  if(hz_evaluations_1$partenaires_recent[i]==0){
+    
+    hz_evaluations_1$partner_status[i] <- "no"
+    
+  }else{
+    
+    hz_evaluations_1$partner_status[i] <- "yes"
+    
+  }
+  
+}
+
+hz_evaluations <- hz_evaluations_1
+
+
+```
+
+
+
+
+
+
+## IPC score difference between recent and first evaluations
+
+
+```{r diff_recent_first}
+
+# Overall IPC score difference -------------
+
+ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal)) + 
+  geom_histogram()+
+  ggtitle("IPC score difference between recent and first evaluations")+
+  xlab("IPC score difference") +
+  ylab("Frequency")
+
+```
+
+
+
+## IPC score difference with presence of parteners
+
+
+
+```{r diff_partn_f}
+
+ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal, fill=partner_status)) + 
+  geom_histogram()+
+  ggtitle("IPC score difference between recent and first evaluation and partners")+
+  xlab("IPC score difference") +
+  ylab("Frequency")
+
+
+```
+
+
+
+## IPC score difference with presence of parteners by Health Zones
+
+
+```{r diff_part_hz_f}
+
+
+ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal, fill=partner_status)) + 
+  geom_histogram()+
+  facet_wrap(nom_zone_sante_hz ~.)+
+  ggtitle("IPC score difference between recent and first evaluations in Health Zones and partners")+
+  xlab("IPC score difference") +
+  ylab("Frequency")
+
+
+
+```
+
+
+
+
+## IPC score difference by categories of Health Facilities
+
+
+
+```{r diff_cat_f}
+
+ggplot(data=hz_evaluations, aes(hz_evaluations$diffVal, fill = categorie_fosa)) + 
+  geom_histogram()+
+  ggtitle("IPC score difference between recent and first evaluation")+
+  xlab("IPC score difference") +
+  ylab("Frequency")
+
+
+```
+
+
+
+
 
 
