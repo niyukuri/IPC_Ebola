@@ -1,0 +1,507 @@
+---
+title: "Fluctuations of IPC score in the context of EVD outbreak in Butembo and Katwa"
+author: "David Niyukuri, Armand Simisi and IPC Team (Goma, Butembo & Katwa)"
+date: "`r format(Sys.time(), '%A %d %B %Y')`"
+output:
+  html_document:
+    code_folding: hide
+    highlight: pygments
+    number_sections: yes
+    theme: spacelab
+    toc: yes
+    toc_collapse: no
+    toc_depth: 4
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  word_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      collapse = TRUE,
+                      fig.width = 8,
+                      fig.height = 6,
+                      dpi = 150,
+                      warning = FALSE,
+                      message = FALSE)
+```
+
+
+# Introduction
+
+During IPC evaluations of Health Facilities, some Health Facilities often show fluctuations of the IPC score and even some shifts to the negative rating. The objective of this analysis is to be able to analyze variables and IPC components related to these changes of the IPC score. We considered the IPC evaluations of the scorecard database from June 11 to October 11, 2019 in the Butembo and Katwa Health Zones.
+
+
+
+```{r load_packages}
+
+suppressMessages(library(readxl))
+suppressMessages(library(dplyr))
+suppressMessages(library(ggplot2))
+suppressMessages(library(ggforce))
+suppressMessages(library(kableExtra))
+suppressMessages(library(lubridate))
+suppressMessages(library(ggpubr))
+suppressMessages(library(linelist))
+suppressMessages(library(MASS))
+suppressMessages(library(geepack))
+suppressMessages(library(lme4))
+
+```
+
+
+
+```{r read_scripts}
+# read scripts
+path_to_scripts <- here::here("Utility_Functions")
+scripts_files <- dir(path_to_scripts, pattern = ".R$", full.names=TRUE)
+for (file in scripts_files) source(file)
+
+```
+
+
+
+```{r load_data}
+
+
+# path to raw data
+
+path_to_data <- here::here("data", "scorecard-2019-11-09-09-42-11.xlsx") 
+
+
+# get data file
+
+data_kobo <- rio::import(path_to_data,
+                         guess_max = 1e4) %>%
+  clean_data(guess_dates = FALSE) %>%
+  as_tibble()
+
+
+# Note: we have two forms to colelct the IPC data: baseline and scorecard
+
+
+
+# data with IPC scorecard form
+data_scorecard <- dplyr::filter(data_kobo, data_kobo$veuillez_selectionner_le_questionnaire=="ipc_scorecard")
+
+# data with baseline form
+data_baseline <- dplyr::filter(data_kobo, data_kobo$veuillez_selectionner_le_questionnaire=="baseline")
+
+
+# Data for IPC score analysis: the combination of the data from the two forms
+data_score <- rbind(data_scorecard, data_baseline)
+
+
+
+# scorecard_evaluation_1st_cleaning script
+
+data_nziza <- scorecard_evaluation_1st_cleaning(data_score = data_score)
+
+
+data_nziza <- dplyr::filter(data_nziza, data_nziza$date_enquete<="2019-10-11" & data_nziza$date_enquete>="2019-06-11")
+
+
+data_nziza <- dplyr::filter(data_nziza, data_nziza$zone_de_sante=="butembo" | data_nziza$zone_de_sante=="katwa")
+
+
+```
+
+
+
+# Methodology
+
+To analyze variables and IPC components associated with the increase/decrease of the IPC score for a Health Facility, we consider a new variable that defines whether between two sequential evaluations there has been an increase or decrease of the IPC score for this Health Facility. Thus, the values of this new variable are: $1$ for positive change (Score_i - Score_i+1 > 0), and $0$ for negative change (Score_i - Score_i+1 < 0). Thus, we have a new data frame where the columns are the name of the health structure, type, category of this same structure and the twelve components of the PCI criteria as well as the new explanatory variable, and the rows are the Health Facilities.
+
+
+$$ V =
+\begin{equation}
+\left\{ 
+\begin{array}{lll} 
+1 \hspace{0.5cm} (Score_{i+1} - Score_{i} > 0)\\
+0 \hspace{0.5 cm} (Score_{i+1} - Score_{i} < 0)
+\end{array}
+\right. 
+\end{equation}
+$$
+
+For any given Health Facility, the IPC score at time T is somehow correlated to the score at time t, with $T > t$. Thus the IPC scores are clustered with clusters being the all Health Facilities in the database. Thus, IPC scores within a cluster may be correlated, but in separate clusters they are independent. 
+
+Therefore, the best model candidate is the Generalized Estimation Equations (GEE), it accounts for correlated observations, and for clustered/longitudinal data, it takes into account the dependence that occurs with multiple obesrvation per subject.
+
+
+
+```{r fluctuations_1}
+
+data_nziza$nom_fosa[data_nziza$nom_fosa=="afia_ni_mali"] <- "disp_afya_ni_mali"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="afya_ni_mali"] <- "disp_afya_ni_mali"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_afia_ni_mali"] <- "disp_afya_ni_mali"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="c_h_ngothe"] <- "ch_ngothe"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="centre_hospitalier_pediatrique_saint_pierre"] <- "ch_pediatrique_saint_pierre"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="chp_saint_pierre"] <- "ch_pediatrique_saint_pierre"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="pediatrique_saint_pierre"] <- "ch_pediatrique_saint_pierre"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="ch_sainte_famille_mukuna"] <- "ch_sainte_famille"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="clin_la_lumere"] <- "clin_la_lumiere"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="clin_la_lumere"] <- "clin_la_lumiere"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="clin_la_lumere"] <- "clin_la_lumiere"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_bethesaida"] <- "disp_bethesaida"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_furahini"] <- "disp_furahini"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_kakwangura"] <- "disp_kakwangura"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_korogho"] <- "disp_korogho"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_kyatsinge"] <- "disp_kyatsinge"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_la_benediction"] <- "disp_la_benediction"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_la_guerison_vient_de_dieu"] <- "disp_la_guerison_vient_de_dieu"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_raps"] <- "disp_raps"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_salongo"] <- "disp_salongo"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_tumaini_letu"] <- "disp_tumaini_letu"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_vuteghe"] <- "disp_vuteghe"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="dispensaire_wasingya"] <- "disp_wasingya"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="ps_la_geurison"] <- "ps_la_guerison"     
+data_nziza$nom_fosa[data_nziza$nom_fosa=="ngandilama"] <- "ps_ngandilama"  
+data_nziza$nom_fosa[data_nziza$nom_fosa=="ngandi_lama"] <- "ps_ngandilama"  
+data_nziza$nom_fosa[data_nziza$nom_fosa=="ps_mukikiryoo"] <- "ps_mukikiryo"  
+data_nziza$nom_fosa[data_nziza$nom_fosa=="tout_est_grace"] <- "ch_tout_est_grace"  
+data_nziza$nom_fosa[data_nziza$nom_fosa=="saint_victor"] <- "disp_saint_victor"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="tumaini_letu"] <- "disp_tumaini_letu"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="keveramuke"] <- "ch_keveramuke"
+data_nziza$nom_fosa[data_nziza$nom_fosa=="poste_de_sante_crapha"] <- "ps_crapha"
+
+
+
+# d <- dplyr::filter(data_hz, data_hz$nom_fosa=='ch_sainte_famille' | data_hz$nom_fosa=='ch_sainte_famille_mukuna')
+# unique(d$zone_de_sante)
+#  "katwa"
+# unique(d$aire_de_sante)
+
+# categorie and type of FOSA to be removed in the analysis cz I find same FOSA with different categories 
+# d = dplyr::filter(data_hz, data_hz$nom_fosa=='p_s_eera' |data_hz$nom_fosa=='ps_el_shaddai')
+
+
+data_hz <- data_nziza
+
+data_hz <- data_hz[,c(1, 12:15, 17, 19, 20, 22, 24, 25, 156:169, 171)]
+
+# data_hz <- data_hz[,c(3,4,6:8, 12:23)]
+
+f_names <- (unique(data_hz$nom_fosa_new))
+
+
+df <- data.frame(matrix(ncol = 20, nrow = 0))
+
+x <- c("date_enquete",
+       "type_structure_de_sante", "categorie" , 
+       "secteur" ,
+       "score_c_1",  "score_c_2",  "score_c_3",  
+       "score_c_4",  "score_c_5",  "score_c_6",  
+       "score_c_7",  "score_c_8",  "score_c_9",  
+       "score_c_10", "score_c_11", "score_c_12",
+       "score_pci_100_i+1",
+       "score_pci_100_i",
+       "diff",
+       "nom_fosa_new")
+
+colnames(df) <- x
+
+
+for(i in 1:length(f_names)){
+  
+  
+  j <- table(data_hz$nom_fosa_new)[[i]] # which(f_names=="disp_bethesaida")
+  
+  if(j>1){
+    
+    number_evaluations_i <- j
+    dt_f <- dplyr::filter(data_hz, data_hz$nom_fosa_new==paste0(names(table(data_hz$nom_fosa_new))[i]))
+    dt_f <- arrange(dt_f,date_enquete)
+    dt_f$number_evaluations_i <- number_evaluations_i
+    dt_f_num <- dt_f
+    dt_f <-  sapply(dt_f, as.factor) 
+    
+    dt_f <- as.data.frame(dt_f)
+    
+    dt_f$score_pci_100 <- dt_f_num$score_pci_100
+    
+    
+    tau <- vector()
+    
+    for(k in 1:(nrow(dt_f) - 1)){
+      
+      tau <- c(tau, dt_f$score_pci_100[nrow(dt_f) - k + 1] - dt_f$score_pci_100[nrow(dt_f) - k])
+      
+    }
+    
+    vec_tau <- rev(tau)
+    
+    tau_positif <- which(vec_tau > 0)
+    
+    tau_negatif <- which(vec_tau < 0)
+    
+    
+    # for positif increase
+    
+    if(length(tau_positif)>0){
+      
+      vyiza_positif <-  data.frame(matrix(ncol = 20, nrow = 0))
+      
+      for(p in 1:length(tau_positif)){
+        
+        d <- cbind(dt_f[tau_positif[p]+1,][c(1, 6:8, 12:23, 25)], dt_f[tau_positif[p],][25], 1, dt_f[tau_positif[p],][26]) # consider the following evaluation
+        names(d) <- x
+        vyiza_positif <- rbind(vyiza_positif, d) 
+        
+      }
+      
+    }else{
+      
+      vyiza_positif <-  data.frame(matrix(ncol = 20, nrow = 0))
+      names(vyiza_positif) <- x
+    }
+    
+    # vyiza_positif$diff <- rep("1", nrow(vyiza_positif))
+    
+    
+    # for negatif decrease
+    
+    
+    if(length(tau_negatif)>0){
+      
+      vyiza_negatif <-  data.frame(matrix(ncol = 20, nrow = 0))
+      
+      for(q in 1:length(tau_negatif)){
+        
+        d_2 <- cbind(dt_f[tau_negatif[q]+1,][c(1, 6:8, 12:23, 25)], dt_f[tau_negatif[q],][25], 0, dt_f[tau_negatif[q],][26]) # consider the following evaluation
+        names(d_2) <- x
+        vyiza_negatif <- rbind(vyiza_negatif, d_2) 
+        
+      }
+      
+      
+    }else{
+      
+      vyiza_negatif <-  data.frame(matrix(ncol = 20, nrow = 0))
+      names(vyiza_negatif) <- x
+    }
+    
+    
+    # vyiza_negatif$diff <- rep("0", nrow(vyiza_negatif))
+    
+    
+    vyiza <- rbind(vyiza_positif, vyiza_negatif)
+    
+    df <- rbind(df, vyiza)
+    
+  }
+  
+  
+}
+
+
+mydata <- na.omit(df)
+names(mydata) <- x
+mydata$diff <- factor(mydata$diff)
+
+# mydata <- mydata[,c(6:18)]
+
+
+recent_evaluation_only_fosa <- function(data_hz){ # ------------ function
+  
+  index_fosa <- which(is.na(data_hz$nom_fosa_new))
+  
+  if(length(index_fosa) >= 1){
+    
+    data_hz_df <- data_hz[-c(index_fosa),]
+    
+  }else{
+    
+    data_hz_df <- data_hz
+    
+  }
+  
+  
+  
+  f_names <- unique(data_hz_df$nom_fosa_new)
+  
+  
+  new_data <- data.frame()
+  
+  for(i in 1:length(f_names)){
+    
+    
+    nom_fosa_i <- f_names[i]
+    
+    
+    dt_f <- dplyr::filter(data_hz_df, data_hz_df$nom_fosa_new==paste0(nom_fosa_i))
+    
+    dt_f <- arrange(dt_f,date_enquete)
+    
+    date_recent <- dt_f$date_enquete[nrow(dt_f)]
+    
+    dt_f_i <- dplyr::filter(dt_f, dt_f$date_enquete==paste0(date_recent)) # RMQ: more than one submission of the surveys
+    
+    dt_f_i <- dt_f_i[1,] # just take te first survey
+    
+    new_data <- rbind(new_data, dt_f_i)
+    
+    
+  }
+  
+  return(new_data)
+  
+  
+}
+
+
+
+data_nziza_descriptive_recent <- recent_evaluation_only_fosa(data_nziza)
+
+
+```
+
+
+# Results
+
+
+## Proportions of change of IPC score in Butembo and Katwa
+
+
+```{r fr}
+#Add histogram for O and 1, add frequencies for 0,1,2,3 per each component
+
+df <- mydata %>%
+  group_by(diff) %>%
+  summarise(counts = n())
+
+
+ggplot(data=df, aes(x=diff, y=counts)) +
+  geom_bar(stat="identity", position=position_dodge())+
+  geom_text(aes(label = counts), vjust = -0.3) + 
+  theme_pubclean()+
+  ylab("Count") +
+  xlab("IPC Score change (1: increase & 0: decrease)") 
+
+# facet_wrap(~ numero_affectation)+ 
+# rotate_x_text(45) +
+# xlab("Health Areas") +
+# ylab("IPC Score") 
+
+
+
+```
+
+
+
+
+
+## Description of variables and IPC components
+
+
+
+```{r descr}
+
+
+table(data_nziza_descriptive_recent$type_structure_de_sante)
+
+
+table(data_nziza_descriptive_recent$categorie)
+
+
+table(data_nziza_descriptive_recent$secteur)
+
+
+
+pander::pander(summary(mydata[,5:16]), "Summary of variables and IPC components")
+
+
+```
+
+
+
+
+## Variables and IPC components related to IPC Score change in Butembo and Katwa
+
+
+### By using the Generalized Estimation Equations (GEE)
+
+
+Assuming within-health facility: observations overtime are independent
+
+
+```{r gee_1}
+
+
+mydata_1 <- mydata[,c(2:16, 18:20)]
+
+
+mydata_x <- mydata_1
+
+names(mydata_x) <- paste0(names(mydata_1), "_f_")
+
+mydata_2 <- mydata_x
+
+mydata_2$diff_f_ <- as.numeric(mydata_2$diff_f_)-1
+
+names(mydata_2) <- c("type_structure_de_sante_f_", "categorie_f_",  "secteur_f_",  
+                     "comp_1_f_", "comp_2_f_", "comp_3_f_", "comp_4_f_",  
+                     "comp_5_f_", "comp_6_f_", "comp_7_f_", "comp_8_f_",  
+                     "comp_9_f_", "comp_10_f_", "comp_11_f_", "comp_12_f_", 
+                     "score_pci_100_i_f_", "diff_f_", "nom_fosa_new_f_" ) 
+
+
+f <- formula(diff_f_ ~ type_structure_de_sante_f_ + categorie_f_ + secteur_f_ + comp_1_f_ + comp_2_f_ + comp_3_f_ + 
+               comp_4_f_ + comp_5_f_ + comp_6_f_ + comp_7_f_ + comp_8_f_ + comp_9_f_ + comp_10_f_ + comp_11_f_ + comp_12_f_)
+
+
+# 1
+
+m.ex_1 <- geeglm(f,
+                 data = mydata_2,
+                 id = interaction(type_structure_de_sante_f_, categorie_f_, secteur_f_, nom_fosa_new_f_),
+                 family = binomial,
+                 corstr = "independence") # observations overtime are independent
+
+# summary(m.ex_1)
+
+
+
+cc_1 <- coef(summary(m.ex_1))
+citab_1 <- with(as.data.frame(cc_1),
+                cbind(lwr=Estimate-1.96*Std.err,
+                      upr=Estimate+1.96*Std.err))
+rownames(citab_1) <- rownames(cc_1)
+citab_1 <- as.data.frame(citab_1)
+
+# citab_1$params <- as.numeric(coefficients(m.ex_1))
+
+pander::pander(cbind(coef(summary(m.ex_1)), citab_1), "GEE outputs and 95% CI when observations overtime are independent")
+
+
+summary(m.ex_1)
+
+
+
+```
+
+### Anova
+
+```{r anova}
+
+# The anova method allows either to produce a table of tests for sequentially adding terms to a
+# model or to compare two nested models. Here we add sequentially terms to the model.
+# The test statistic for testing the difference between is the Wald test statistic.
+
+pander::pander(anova(m.ex_1)[,1:3], "Sequentially adding terms to a
+model or to compare two nested models")
+
+
+anova(m.ex_1)[,1:3]
+
+
+```
+
