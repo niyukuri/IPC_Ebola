@@ -584,6 +584,12 @@ data_ipc_priority <- dplyr::select(IPC_PRIORITY, date_enquete, zone_de_sante, ai
 mydata <- data_ipc_priority
 
 mydata$priority <- factor(mydata$priority)
+mydata$presence_partenaire <- factor(mydata$presence_partenaire)
+mydata$type_structure_de_sante <- factor(mydata$type_structure_de_sante)
+mydata$categorie <- factor(mydata$categorie)
+mydata$secteur <- factor(mydata$secteur)
+
+
 
 
 # Model ----------
@@ -630,9 +636,20 @@ test$priority <- factor(test$priority)
 train_mod <- train
 test_mod <- test
 
-train_mod <- train_mod[,10:13]
-test_mod <- test_mod[,10:13]
+# train_mod <- train_mod[,10:13]
+# test_mod <- test_mod[,10:13]
 
+
+select_variables_ml <- c("presence_partenaire", "type_structure_de_sante", 
+                         "categorie", "secteur",
+                         "score_pci_100", "evd_cases", 
+                         "eds_deaths", "priority")
+
+train_mod_x <- dplyr::select(train_mod, select_variables_ml)
+test_mod_x <- dplyr::select(test_mod, select_variables_ml) 
+
+train_mod <- train_mod_x
+test_mod <- test_mod_x
 
 normalize <- function(x){
   num <- x - min(x)
@@ -651,21 +668,37 @@ test_mod$evd_cases <- normalize(x=test_mod$evd_cases)
 test_mod$eds_deaths <- normalize(x=test_mod$eds_deaths)
 
 
+# factors
+
+train_mod$presence_partenaire <- factor(train_mod$presence_partenaire)
+train_mod$type_structure_de_sante <- factor(train_mod$type_structure_de_sante)
+train_mod$categorie <- factor(train_mod$categorie)
+train_mod$secteur <- factor(train_mod$secteur)
+
+names(train_mod) <- c("Partners", "Type", "Category", "Sector", "Score", "EVD", "SDB", "Priority")
+
+test_mod$presence_partenaire <- factor(test_mod$presence_partenaire)
+test_mod$type_structure_de_sante <- factor(test_mod$type_structure_de_sante)
+test_mod$categorie <- factor(test_mod$categorie)
+test_mod$secteur <- factor(test_mod$secteur)
+
+names(test_mod) <- c("Partners", "Type", "Category", "Sector", "Score", "EVD", "SDB", "Priority")
 
 
 # Machine learning 
 
 # Option 1: using caret package
 
+# x <- rbind(train_mod, test_mod)
 
 fitControl <- caret::trainControl(method = "repeatedcv",   
-                                  number = 10,     # number of folds  -resampling
+                                  number = 5,     # number of folds  -resampling
                                   repeats = 10, # repeated ten times 
                                   search = "grid")    
 
 # Training
 
-model_rf <- caret::train(train_mod[, 1:3], train_mod[, 4], 
+model_rf <- caret::train(train_mod[, 1:7], train_mod[, 8], 
                          method="rf", # knn and others
                          metric = "Accuracy",
                          trControl = fitControl)
@@ -679,139 +712,50 @@ ggplot(caret::varImp(model_rf, scale = TRUE))
 
 # Predict the labels of the test set
 
-predictions <- predict(model_rf, test_mod[,1:3]) # , type="prob") # model_knn
+predictions <- predict(model_rf, test_mod[,1:7]) # , type="prob") # model_knn
 
 
 # Evaluate the predictions
-table(predictions) == table(test_mod[,4])
+table(predictions) == table(test_mod[,8])
 
 # Confusion matrix 
 
-confusionMatrix(predictions, test_mod[,4])
+confusionMatrix(predictions, test_mod[,8])
 
-
-# Computing manually the precision
-
-if(length(table(test_mod$priority == predictions))==1){
-  
-  precision <- (table(test_mod$priority == predictions)[[1]])/sum(table(test_mod$priority == predictions)[[1]])
-  
-  precision <- round(precision, digits = 3)
-  
-}else{
-  
-  
-  precision <- (table(test_mod$priority == predictions)[[2]])/sum(table(test_mod$priority == predictions)[[1]], table(test_mod$priority == predictions)[[2]])
-  
-  precision <- round(precision, digits = 3)
-  
-}
-
-
-# Manual cross validation
-
-cv.precision <- vector()
-
-k <- 10
-
-# Initialize progress bar
-
-# pbar <- plyr::create_progress_bar('text')
-# 
-# pbar$init(k)
-
-for(i in 1:k){
-  
-  train <- data.frame(matrix(ncol = 13))
-  test <- data.frame(matrix(ncol = 13))
-  
-  names(train) <- names(mydata)
-  names(test) <- names(mydata)
-  
-  
-  for(i in 1:length(unique(mydata$priority))){
-    
-    level_i <- unique(mydata$priority)[i]
-    
-    level_data <- dplyr::filter(mydata, mydata$priority==level_i)
-    
-    index_i <- sample(1:nrow(level_data),round(0.75*nrow(level_data)))
-    
-    train_i <- level_data[index_i,]
-    test_i <- level_data[-index_i,]
-    
-    train <- rbind(train, train_i)
-    test <- rbind(test, test_i)
-    
-  }
-  
-  
-  train <- train[-1,]
-  test <- test[-1,]
-  
-  train$priority <- factor(train$priority)
-  test$priority <- factor(test$priority)
-  
-  train_mod <- train
-  test_mod <- test
-  
-  train_mod <- train_mod[,10:13]
-  test_mod <- test_mod[,10:13]
-  
-  model_rf <- caret::train(train_mod[, 1:3], train_mod[, 4], method="rf")
-  
-  predictions <- predict(object=model_rf, test_mod[,1:3]) # model_knn
-  
-  if(length(table(test_mod$priority == predictions))==1){
-    
-    precision <- (table(test_mod$priority == predictions)[[1]])/sum(table(test_mod$priority == predictions)[[1]])
-    
-    precision <- round(precision, digits = 3)
-    
-  }else{
-    
-    
-    precision <- (table(test_mod$priority == predictions)[[2]])/sum(table(test_mod$priority == predictions)[[1]], table(test_mod$priority == predictions)[[2]])
-    
-    precision <- round(precision, digits = 3)
-    
-  }
-  
-  cv.precision <- c(cv.precision, precision) 
-  
-}
 
 
 # Option 2: using randomForest package
 
-rf_classifier <- randomForest(priority ~ ., data=train_mod, ntree=100, mtry=3, importance=TRUE)
+rf_classifier <- randomForest(Priority ~ ., data=train_mod, ntree=1000, mtry=6, importance=TRUE)
+
+RndomForest_Classfier <- rf_classifier
+
+varImpPlot(RndomForest_Classfier)
 
 
-varImpPlot(rf_classifier)
+prediction_for_table <- predict(rf_classifier,test_mod[,1:7])
 
+table(observed=test_mod[,8],predicted=prediction_for_table)
 
-prediction_for_table <- predict(rf_classifier,test_mod[,1:3])
-
-table(observed=test_mod[,4],predicted=prediction_for_table)
-
+confusionMatrix(prediction_for_table, test_mod[,8])
 
 # ROC
 # Calculate the probability of new observations belonging to each class
 # prediction_for_roc_curve will be a matrix with dimensions data_set_size x number_of_classes
 
-prediction_for_roc_curve <- predict(rf_classifier, test_mod[,1:3], type="prob")
+prediction_for_roc_curve <- predict(model_rf, test_mod[,1:7], type="prob") # predict(rf_classifier, test_mod[,1:7], type="prob")
 
 # Use pretty colours:
 pretty_colours <- c("#F8766D","#00BA38","#619CFF")
 
 
 # Specify the different classes 
-classes <- levels(test_mod$priority)
+classes <- levels(test_mod$Priority)
 # For each class
 
 for (i in 1:3){
   # Define which observations belong to class[i]
-  true_values <- ifelse(test_mod[,4]==classes[i],1,0)
+  true_values <- ifelse(test_mod[,8]==classes[i],1,0)
   # Assess the performance of classifier for class[i]
   pred <- prediction(prediction_for_roc_curve[,i],true_values)
   perf <- performance(pred, "tpr", "fpr")
