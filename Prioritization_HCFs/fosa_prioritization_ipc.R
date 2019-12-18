@@ -41,6 +41,10 @@
 
 # Pricipal ID: FOSA in SCORECARD DATABASE
 
+# Set SEED
+
+set.seed(777)
+
 # Loading packages ----------
 
 suppressMessages(library(readxl))
@@ -565,11 +569,14 @@ IPC_PRIORITY$deadline_for_action <- IPC_PRIORITY$date_enquete + 21
 IPC_PRIORITY <- readRDS("/home/david/Dropbox/WHO_EBV_RESPONSE_2018/IPC_DRC_Paul_Allen/ipc/Algorithm_Model_IPC/11_11_2019_Priority_FOSA_OutPut.rds")
 
 
+# NA for partners -- > 0
+
+
 for(i in 1:nrow(IPC_PRIORITY)){
   
-  if(is.na(IPC_PRIORITY$presence_partenaire[i])){
+  if(is.na(IPC_PRIORITY$nbre_partenaires[i])){
     
-    IPC_PRIORITY$presence_partenaire[i] <- 0
+    IPC_PRIORITY$nbre_partenaires[i] <- 0
     
   }
   
@@ -583,11 +590,90 @@ data_ipc_priority <- dplyr::select(IPC_PRIORITY, date_enquete, zone_de_sante, ai
 
 mydata <- data_ipc_priority
 
-mydata$priority <- factor(mydata$priority)
-mydata$presence_partenaire <- factor(mydata$presence_partenaire)
-mydata$type_structure_de_sante <- factor(mydata$type_structure_de_sante)
-mydata$categorie <- factor(mydata$categorie)
-mydata$secteur <- factor(mydata$secteur)
+
+# Categorize IPC score 
+
+mydata$score_category <- rep(NA, length(mydata$score_pci_100))
+
+for(i in 1:length(mydata$score_pci_100)){
+  
+  if(mydata$score_pci_100[i]<50){
+    
+    mydata$score_category[i] <- "g_50"
+    
+  }else if(mydata$score_pci_100[i]>=80){
+    
+    mydata$score_category[i] <- "g_80"
+    
+  }else{
+    mydata$score_category[i] <- "g_50_80"
+  }
+  
+}
+
+
+# Categorize EVD: presence or not
+
+mydata$evd_category <- rep(NA, length(mydata$evd_cases))
+
+for(i in 1:length(mydata$evd_cases)){
+  
+  if(mydata$evd_cases[i]==0){
+    
+    mydata$evd_category[i] <- "NO"
+    
+  }else{
+    
+    mydata$evd_category[i] <- "OUI"
+  }
+  
+}
+
+
+
+# Categorize unsafe burial: presence or not
+
+mydata$eds_category <- rep(NA, length(mydata$eds_deaths))
+
+for(i in 1:length(mydata$eds_deaths)){
+  
+  if(mydata$eds_deaths[i]==0){
+    
+    mydata$eds_category[i] <- "NO"
+    
+  }else{
+    
+    mydata$eds_category[i] <- "OUI"
+  }
+  
+}
+
+
+
+# DATA for two options:
+
+
+select_variables_ml_1 <- c("nbre_partenaires", "type_structure_de_sante", 
+                           "categorie", "secteur",
+                           "score_pci_100", 
+                           "evd_cases", 
+                           "eds_deaths", "priority")
+
+
+select_variables_ml_2 <- c("presence_partenaire", "type_structure_de_sante", 
+                           "categorie", "secteur",
+                           "score_category", 
+                           "evd_category", 
+                           "eds_category", "priority")
+
+
+mydata_1 <- dplyr::select(mydata, select_variables_ml_1)
+
+names(mydata_1) <- c("Partners", "Type", "Category", "Sector", "Score", "EVD", "SDB", "Priority")
+
+mydata_2 <- dplyr::select(mydata, select_variables_ml_2)
+
+names(mydata_2) <- c("Partners", "Type", "Category", "Sector", "Score", "EVD", "SDB", "Priority")
 
 
 
@@ -599,57 +685,68 @@ mydata$secteur <- factor(mydata$secteur)
 
 # sampling startegy to be able to catch all priority levels in any sample
 
-# > table(mydata$priority)
-# HIGH      LOW MODERATE 
-# 518       18       23 
 
-train <- data.frame(matrix(ncol = 13))
-test <- data.frame(matrix(ncol = 13))
+# For option 1:
 
-names(train) <- names(mydata)
-names(test) <- names(mydata)
+train_1 <- data.frame(matrix(ncol = 8))
+test_1 <- data.frame(matrix(ncol = 8))
+
+names(train_1) <- names(mydata_1)
+names(test_1) <- names(mydata_1)
 
 
-for(i in 1:length(unique(mydata$priority))){
+for(i in 1:length(unique(mydata_1$Priority))){
   
-  level_i <- unique(mydata$priority)[i]
+  level_i <- unique(mydata_1$Priority)[i]
   
-  level_data <- dplyr::filter(mydata, mydata$priority==level_i)
+  level_data <- dplyr::filter(mydata_1, mydata_1$Priority==level_i)
   
   index_i <- sample(1:nrow(level_data),round(0.75*nrow(level_data)))
   
   train_i <- level_data[index_i,]
   test_i <- level_data[-index_i,]
   
-  train <- rbind(train, train_i)
-  test <- rbind(test, test_i)
+  train_1 <- rbind(train_1, train_i)
+  test_1 <- rbind(test_1, test_i)
+  
+}
+
+train_1 <- train_1[-1,]
+test_1 <- test_1[-1,]
+
+
+
+# For option 2: 
+
+train_2 <- data.frame(matrix(ncol = 8))
+test_2 <- data.frame(matrix(ncol = 8))
+
+names(train_2) <- names(mydata_2)
+names(test_2) <- names(mydata_2)
+
+
+for(i in 1:length(unique(mydata_2$Priority))){
+  
+  level_i <- unique(mydata_2$Priority)[i]
+  
+  level_data <- dplyr::filter(mydata_2, mydata_2$Priority==level_i)
+  
+  index_i <- sample(1:nrow(level_data),round(0.75*nrow(level_data)))
+  
+  train_i <- level_data[index_i,]
+  test_i <- level_data[-index_i,]
+  
+  train_2 <- rbind(train_2, train_i)
+  test_2 <- rbind(test_2, test_i)
   
 }
 
 
-train <- train[-1,]
-test <- test[-1,]
-
-train$priority <- factor(train$priority)
-test$priority <- factor(test$priority)
-
-train_mod <- train
-test_mod <- test
-
-# train_mod <- train_mod[,10:13]
-# test_mod <- test_mod[,10:13]
+train_2 <- train_2[-1,]
+test_2 <- test_2[-1,]
 
 
-select_variables_ml <- c("presence_partenaire", "type_structure_de_sante", 
-                         "categorie", "secteur",
-                         "score_pci_100", "evd_cases", 
-                         "eds_deaths", "priority")
-
-train_mod_x <- dplyr::select(train_mod, select_variables_ml)
-test_mod_x <- dplyr::select(test_mod, select_variables_ml) 
-
-train_mod <- train_mod_x
-test_mod <- test_mod_x
+# Normalize for numeric values
 
 normalize <- function(x){
   num <- x - min(x)
@@ -658,106 +755,303 @@ normalize <- function(x){
 }
 
 
-train_mod$score_pci_100 <- normalize(x=train_mod$score_pci_100)
-train_mod$evd_cases <- normalize(x=train_mod$evd_cases)
-train_mod$eds_deaths <- normalize(x=train_mod$eds_deaths)
+# Only option 1 needs normaliziation
+
+train_1$Score <- normalize(x=train_1$Score)
+train_1$EVD <- normalize(x=train_1$EVD)
+train_1$SDB <- normalize(x=train_1$SDB)
+
+test_1$Score <- normalize(x=test_1$Score)
+test_1$EVD <- normalize(x=test_1$EVD)
+test_1$SDB <- normalize(x=test_1$SDB)
 
 
-test_mod$score_pci_100 <- normalize(x=test_mod$score_pci_100)
-test_mod$evd_cases <- normalize(x=test_mod$evd_cases)
-test_mod$eds_deaths <- normalize(x=test_mod$eds_deaths)
+# Factors
+
+# Option 1:
+
+# Train
+
+train_1$Type <- factor(train_1$Type)
+train_1$Category <- factor(train_1$Category)
+train_1$Sector <- factor(train_1$Sector)
+train_1$Priority <- factor(train_1$Priority)
 
 
-# factors
+# Test
 
-train_mod$presence_partenaire <- factor(train_mod$presence_partenaire)
-train_mod$type_structure_de_sante <- factor(train_mod$type_structure_de_sante)
-train_mod$categorie <- factor(train_mod$categorie)
-train_mod$secteur <- factor(train_mod$secteur)
+test_1$Type <- factor(test_1$Type)
+test_1$Category <- factor(test_1$Category)
+test_1$Sector <- factor(test_1$Sector)
+test_1$Priority <- factor(test_1$Priority)
 
-names(train_mod) <- c("Partners", "Type", "Category", "Sector", "Score", "EVD", "SDB", "Priority")
+#
 
-test_mod$presence_partenaire <- factor(test_mod$presence_partenaire)
-test_mod$type_structure_de_sante <- factor(test_mod$type_structure_de_sante)
-test_mod$categorie <- factor(test_mod$categorie)
-test_mod$secteur <- factor(test_mod$secteur)
+# Option 2: 
 
-names(test_mod) <- c("Partners", "Type", "Category", "Sector", "Score", "EVD", "SDB", "Priority")
+# Train
+
+train_2$Partners <- factor(train_2$Partners)
+train_2$Score <- factor(train_2$Score)
+train_2$EVD <- factor(train_2$EVD)
+train_2$SDB <- factor(train_2$SDB)
 
 
-# Machine learning 
+train_2$Type <- factor(train_2$Type)
+train_2$Category <- factor(train_2$Category)
+train_2$Sector <- factor(train_2$Sector)
+train_2$Priority <- factor(train_2$Priority)
 
-# Option 1: using caret package
 
-# x <- rbind(train_mod, test_mod)
+# Test
+
+test_2$Partners <- factor(test_2$Partners)
+test_2$Score <- factor(test_2$Score)
+test_2$EVD <- factor(test_2$EVD)
+test_2$SDB <- factor(test_2$SDB)
+
+test_2$Type <- factor(test_2$Type)
+test_2$Category <- factor(test_2$Category)
+test_2$Sector <- factor(test_2$Sector)
+test_2$Priority <- factor(test_2$Priority)
+
+
+# Modele 1: -----------
+
+
+# Using caret -------------------
 
 fitControl <- caret::trainControl(method = "repeatedcv",   
-                                  number = 5,     # number of folds  -resampling
+                                  number = 10,     # number of folds  -resampling
                                   repeats = 10, # repeated ten times 
                                   search = "grid")    
 
-# Training
+# Model training
 
-model_rf <- caret::train(train_mod[, 1:7], train_mod[, 8], 
-                         method="rf", # knn and others
-                         metric = "Accuracy",
-                         trControl = fitControl)
+model_rf_caret_1 <- caret::train(train_1[, 1:7], train_1[, 8], 
+                                 method="rf", # knn and others
+                                 metric = "Accuracy",
+                                 trControl = fitControl)
 
 # Variable importance
 
-ggplot(caret::varImp(model_rf, scale = TRUE))
+ggplot(caret::varImp(model_rf_caret_1, scale = TRUE))
 
 
 # Prediction
 
 # Predict the labels of the test set
 
-predictions <- predict(model_rf, test_mod[,1:7]) # , type="prob") # model_knn
+predictions_1 <- predict(model_rf_caret_1, test_1[,1:7]) # , type="prob") # model_knn
 
 
 # Evaluate the predictions
-table(predictions) == table(test_mod[,8])
+table(predictions_1) == table(test_1[,8])
 
 # Confusion matrix 
 
-confusionMatrix(predictions, test_mod[,8])
+confusionMatrix(predictions_1, test_1[,8])
 
-
-
-# Option 2: using randomForest package
-
-rf_classifier <- randomForest(Priority ~ ., data=train_mod, ntree=1000, mtry=6, importance=TRUE)
-
-RndomForest_Classfier <- rf_classifier
-
-varImpPlot(RndomForest_Classfier)
-
-
-prediction_for_table <- predict(rf_classifier,test_mod[,1:7])
-
-table(observed=test_mod[,8],predicted=prediction_for_table)
-
-confusionMatrix(prediction_for_table, test_mod[,8])
 
 # ROC
 # Calculate the probability of new observations belonging to each class
 # prediction_for_roc_curve will be a matrix with dimensions data_set_size x number_of_classes
 
-prediction_for_roc_curve <- predict(model_rf, test_mod[,1:7], type="prob") # predict(rf_classifier, test_mod[,1:7], type="prob")
+prediction_for_roc_curve_caret_1 <- predict(model_rf_caret_1, test_1[,1:7], type="prob") # predict(rf_classifier, test_mod[,1:7], type="prob")
 
 # Use pretty colours:
 pretty_colours <- c("#F8766D","#00BA38","#619CFF")
 
 
 # Specify the different classes 
-classes <- levels(test_mod$Priority)
+classes <- levels(test_1$Priority)
 # For each class
 
 for (i in 1:3){
   # Define which observations belong to class[i]
-  true_values <- ifelse(test_mod[,8]==classes[i],1,0)
+  true_values <- ifelse(test_1[,8]==classes[i],1,0)
   # Assess the performance of classifier for class[i]
-  pred <- prediction(prediction_for_roc_curve[,i],true_values)
+  pred <- prediction(prediction_for_roc_curve_caret_1[,i],true_values)
+  perf <- performance(pred, "tpr", "fpr")
+  if (i==1)
+  {
+    plot(perf,main="ROC Curve",col=pretty_colours[i]) 
+  }
+  else
+  {
+    plot(perf,main="ROC Curve",col=pretty_colours[i],add=TRUE) 
+  }
+  # Calculate the AUC and print it to screen
+  auc.perf <- performance(pred, measure = "auc")
+  print(auc.perf@y.values)
+}
+
+
+
+
+
+
+# Using randomForest package -----------
+
+
+model_rf_randFor_1 <- randomForest(Priority ~ ., data=train_1, ntree=1000, mtry=7, importance=TRUE)
+
+
+varImpPlot(model_rf_randFor_1)
+
+
+prediction_for_table_1 <- predict(model_rf_randFor_1, test_1[,1:7])
+
+table(observed=test_1[,8],predicted=prediction_for_table_1)
+
+confusionMatrix(prediction_for_table_1, test_1[,8])
+
+# ROC
+# Calculate the probability of new observations belonging to each class
+# prediction_for_roc_curve will be a matrix with dimensions data_set_size x number_of_classes
+
+prediction_for_roc_curve_rf_1 <- predict(model_rf_randFor_1, test_1[,1:7], type="prob") # predict(rf_classifier, test_mod[,1:7], type="prob")
+
+# Use pretty colours:
+pretty_colours <- c("#F8766D","#00BA38","#619CFF")
+
+
+# Specify the different classes 
+classes <- levels(test_1$Priority)
+# For each class
+
+for (i in 1:3){
+  # Define which observations belong to class[i]
+  true_values <- ifelse(test_1[,8]==classes[i],1,0)
+  # Assess the performance of classifier for class[i]
+  pred <- prediction(prediction_for_roc_curve_rf_1[,i],true_values)
+  perf <- performance(pred, "tpr", "fpr")
+  if (i==1)
+  {
+    plot(perf,main="ROC Curve",col=pretty_colours[i]) 
+  }
+  else
+  {
+    plot(perf,main="ROC Curve",col=pretty_colours[i],add=TRUE) 
+  }
+  # Calculate the AUC and print it to screen
+  auc.perf <- performance(pred, measure = "auc")
+  print(auc.perf@y.values)
+}
+
+
+
+
+
+
+# Modele 2: -----------
+
+
+
+
+
+# Using caret -------------------
+
+
+# Model training
+
+model_rf_caret_2 <- caret::train(train_2[, 1:7], train_2[, 8], 
+                                 method="rf", # knn and others
+                                 metric = "Accuracy",
+                                 trControl = fitControl)
+
+# Variable importance
+
+ggplot(caret::varImp(model_rf_caret_2, scale = TRUE))
+
+
+# Prediction
+
+# Predict the labels of the test set
+
+predictions_2 <- predict(model_rf_caret_2, test_2[,1:7]) # , type="prob") # model_knn
+
+
+# Evaluate the predictions
+table(predictions_2) == table(test_2[,8])
+
+# Confusion matrix 
+
+confusionMatrix(predictions_2, test_2[,8])
+
+
+# ROC
+# Calculate the probability of new observations belonging to each class
+# prediction_for_roc_curve will be a matrix with dimensions data_set_size x number_of_classes
+
+prediction_for_roc_curve_caret_2 <- predict(model_rf_caret_2, test_2[,1:7], type="prob") # predict(rf_classifier, test_mod[,1:7], type="prob")
+
+# Use pretty colours:
+pretty_colours <- c("#F8766D","#00BA38","#619CFF")
+
+
+# Specify the different classes 
+classes <- levels(test_2$Priority)
+# For each class
+
+for (i in 1:3){
+  # Define which observations belong to class[i]
+  true_values <- ifelse(test_2[,8]==classes[i],1,0)
+  # Assess the performance of classifier for class[i]
+  pred <- prediction(prediction_for_roc_curve_caret_2[,i],true_values)
+  perf <- performance(pred, "tpr", "fpr")
+  if (i==1)
+  {
+    plot(perf,main="ROC Curve",col=pretty_colours[i]) 
+  }
+  else
+  {
+    plot(perf,main="ROC Curve",col=pretty_colours[i],add=TRUE) 
+  }
+  # Calculate the AUC and print it to screen
+  auc.perf <- performance(pred, measure = "auc")
+  print(auc.perf@y.values)
+}
+
+
+
+
+
+
+# Using randomForest package -----------
+
+
+model_rf_randFor_2 <- randomForest(Priority ~ ., data=train_2, ntree=1000, mtry=7, importance=TRUE)
+
+
+varImpPlot(model_rf_randFor_2)
+
+
+prediction_for_table_2 <- predict(model_rf_randFor_2, test_2[,1:7])
+
+table(observed=test_2[,8],predicted=prediction_for_table_2)
+
+confusionMatrix(prediction_for_table_2, test_2[,8])
+
+# ROC
+# Calculate the probability of new observations belonging to each class
+# prediction_for_roc_curve will be a matrix with dimensions data_set_size x number_of_classes
+
+prediction_for_roc_curve_rf_2 <- predict(model_rf_randFor_2, test_2[,1:7], type="prob") # predict(rf_classifier, test_mod[,1:7], type="prob")
+
+# Use pretty colours:
+pretty_colours <- c("#F8766D","#00BA38","#619CFF")
+
+
+# Specify the different classes 
+classes <- levels(test_2$Priority)
+# For each class
+
+for (i in 1:3){
+  # Define which observations belong to class[i]
+  true_values <- ifelse(test_2[,8]==classes[i],1,0)
+  # Assess the performance of classifier for class[i]
+  pred <- prediction(prediction_for_roc_curve_rf_2[,i],true_values)
   perf <- performance(pred, "tpr", "fpr")
   if (i==1)
   {
