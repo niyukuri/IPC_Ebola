@@ -26,4 +26,4 @@ Open the R project `IPC_Ebola` on your computer and check where you are by typin
 
 R version 3.4.4
 
-The code has been tested on OS X Version 10.11.6 and Linux Ubuntu Version 16.04.
+The code has been tested on OS X Version 10.14.6 and Linux Ubuntu Version 16.04.
